@@ -3,7 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DMS MIJ | Monitoring Post-Event (Cloud Sync)</title>
+    <title>DMS PT MIJ</title>
+    <meta name="application-name" content="DMS PT MIJ">
+    <meta name="apple-mobile-web-app-title" content="DMS PT MIJ">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="icon" type="image/png" href="MIJ.PNG">
+    <link rel="shortcut icon" type="image/png" href="MIJ.PNG">
+    <link rel="apple-touch-icon" href="MIJ.PNG">
+    <link rel="apple-touch-icon" sizes="180x180" href="MIJ.PNG">
+    <link id="pwaManifestLink" rel="manifest" href="">
     <!-- CSS & JS External Dependencies -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -1146,6 +1155,33 @@
             };
             reader.readAsArrayBuffer(file);
         }
+
+        (function setupHomeScreenManifest() {
+            const manifest = {
+                name: "DMS PT MIJ",
+                short_name: "DMS PT MIJ",
+                start_url: "./",
+                display: "standalone",
+                background_color: "#f8fafc",
+                theme_color: "#0f172a",
+                icons: [
+                    {
+                        src: "MIJ.PNG",
+                        sizes: "192x192",
+                        type: "image/png"
+                    },
+                    {
+                        src: "MIJ.PNG",
+                        sizes: "512x512",
+                        type: "image/png"
+                    }
+                ]
+            };
+            const blob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
+            const manifestUrl = URL.createObjectURL(blob);
+            const linkEl = document.getElementById("pwaManifestLink");
+            if (linkEl) linkEl.href = manifestUrl;
+        })();
 
         window.onload = () => {
             postEvents = JSON.parse(localStorage.getItem('dms_post_events_final')) || [];
