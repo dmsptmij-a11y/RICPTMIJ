@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DMS MIJ | Monitoring Post-Event (Cloud Sync)</title>
+    <!-- CSS & JS External Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
+        input::-webkit-calendar-picker-indicator { cursor: pointer; }
+        .chart-scroll-container { width: 100%; position: relative; }
+        .chart-wrapper { width: 100% !important; height: 400px; }
+        
+        /* Custom Tooltip Anomali */
+        .has-tooltip { position: relative; }
+        .anomaly-tooltip {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+            position: absolute;
+            z-index: 50;
+            left: 50%;
+            bottom: 100%;
+            transform: translateX(-50%) translateY(10px);
+            pointer-events: none;
+        }
+        .has-tooltip:hover .anomaly-tooltip {
+            visibility: visible;
+            opacity: 1;
+            transform: translateX(-50%) translateY(-8px);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-[#f8fafc] text-slate-800">
+
+    <!-- MAIN CONTENT ONLY -->
+    <main class="max-w-[1600px] mx-auto p-6 md:p-10">
+        
+        <!-- HEADER -->
+        <header class="flex flex-wrap justify-between items-end gap-4 mb-8">
+            <div class="flex items-center gap-4">
+                <img src="MIJ.PNG" alt="Logo PT Majau Inti Jaya" class="h-14 w-auto object-contain rounded-xl bg-white p-1.5 shadow-sm border border-slate-100">
+                <div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-black tracking-widest uppercase text-blue-600">HSE Transport • PT Majau Inti Jaya</span>
+                    </div>
+                    <h2 class="text-3xl font-black text-slate-800 tracking-tight">DMS PT MAJAU INTI JAYA</h2>
+                    <p class="text-slate-500 font-medium italic">Evaluasi dan validasi data alert DMS — Multi-User Cloud Storage</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <button onclick="resetAllData()" class="bg-red-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-red-600 shadow-lg shadow-red-200 transition-all">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset All Data
+                </button>
+                <button onclick="toggleModal('inputModal', true)" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">
+                    <i data-lucide="plus-circle" class="w-4 h-4"></i> Input Alert
+                </button>
+            </div>
+        </header>
+
+        <!-- CARDS ANALYTICS -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Avg. Response Time</p>
+                <h3 id="avgResponseTime" class="text-2xl font-black text-slate-800">0 <span class="text-xs font-normal text-slate-400">Menit</span></h3>
+            </div>
+            <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-red-100 bg-red-50/20">
+                <p class="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-2">Alert True</p>
+                <h3 id="countTrue" class="text-2xl font-black text-red-600">0</h3>
+            </div>
+            <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-blue-100 bg-blue-50/20">
+                <p class="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-2">Alert False</p>
+                <h3 id="countFalse" class="text-2xl font-black text-blue-600">0</h3>
+            </div>
+            <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-emerald-100 bg-emerald-50/20">
+                <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2">Belum Intervensi</p>
+                <h3 id="countPending" class="text-2xl font-black text-emerald-600">0</h3>
+            </div>
+            <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Top Trend Alert</p>
+                <div id="topAlerts" class="text-xs font-bold text-slate-800 truncate">-</div>
+            </div>
+        </div>
+
+        <!-- GRAFIK CHART.JS -->
+        <div class="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 mb-8">
+            <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
+                <div>
+                    <h4 class="text-sm font-bold text-slate-800 uppercase tracking-widest">Grafik Analisa: Kejadian vs Intervensi</h4>
+                    <div class="flex flex-wrap items-center gap-4 mt-2 text-[10px] font-bold">
+                        <span class="flex items-center gap-1.5 text-red-600"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Merah: Alert True</span>
+                        <span class="flex items-center gap-1.5 text-blue-600"><span class="w-3 h-3 rounded-full bg-blue-600 inline-block"></span> Biru: Alert False</span>
+                        <span class="flex items-center gap-1.5 text-emerald-600"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span> Hijau: Belum Terintervensi</span>
+                        <span class="flex items-center gap-1.5 text-amber-500"><span class="w-3 h-3 rounded-full bg-amber-400 inline-block"></span> Kuning: Beda Hari</span>
+                    </div>
+                </div>
+                <button onclick="downloadChart()" class="flex items-center gap-2 text-[10px] font-bold bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition-all">
+                    <i data-lucide="download" class="w-3 h-3"></i> Download HD JPG
+                </button>
+            </div>
+            <div class="chart-scroll-container">
+                <div class="chart-wrapper" id="chartWrapper">
+                    <canvas id="interventionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- FILTER & ACTION TOOLBAR -->
+        <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 mb-6 flex flex-wrap gap-4 items-center">
+            <div class="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400"></i>
+                <input type="text" id="filterNoLambung" oninput="renderAll()" placeholder="No. Lambung..." class="bg-transparent text-xs font-bold outline-none w-28">
+            </div>
+            
+            <div class="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+                <i data-lucide="calendar" class="w-4 h-4 text-slate-400"></i>
+                <span class="text-[10px] font-bold text-slate-400 uppercase">Dari:</span>
+                <input type="date" id="filterStartDate" onchange="renderAll()" class="bg-transparent text-xs font-bold outline-none">
+                <span class="text-[10px] font-bold text-slate-400 uppercase">Ke:</span>
+                <input type="date" id="filterEndDate" onchange="renderAll()" class="bg-transparent text-xs font-bold outline-none">
+            </div>
+
+            <select id="filterVendor" onchange="renderAll()" class="bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none">
+                <option value="all">Semua Vendor</option>
+                <option value="Cartrack">Cartrack</option>
+                <option value="Solo System">Solo System</option>
+                <option value="Unknown">Vendor Tidak Diketahui</option>
+            </select>
+
+            <select id="filterSite" onchange="renderAll()" class="bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none">
+                <option value="all">Semua Site</option>
+                <option value="BMO 1">BMO 1</option>
+                <option value="BMO 2">BMO 2</option>
+                <option value="SMO">SMO</option>
+                <option value="LMO">LMO</option>
+                <option value="GMO">GMO</option>
+                <option value="HO">HO</option>
+            </select>
+
+            <select id="filterStatus" onchange="renderAll()" class="bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none">
+                <option value="all">Semua Status</option>
+                <option value="True">Alert True</option>
+                <option value="False">Alert False</option>
+                <option value="Belum Terintervensi">Belum Terintervensi</option>
+            </select>
+
+            <select id="filterType" onchange="renderAll()" class="bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none">
+                <option value="all">Semua Tipe</option>
+                <option value="Peringatan Tabrakan">Peringatan Tabrakan</option>
+                <option value="Peringatan Pindah Jalur">Peringatan Pindah Jalur</option>
+                <option value="Mobil Terlalu Dekat">Mobil Terlalu Dekat</option>
+                <option value="Object depan">Object depan</option>
+                <option value="No Seatbelt">No Seatbelt</option>
+                <option value="Fatigue">Fatigue</option>
+                <option value="Merokok">Merokok</option>
+                <option value="Tidak Fokus">Tidak Fokus</option>
+                <option value="Camera Tertutup">Camera Tertutup</option>
+                <option value="Silau Matahari">Silau Matahari</option>
+                <option value="Closed Eyes Fatigue">Closed Eyes Fatigue</option>
+                <option value="Yawn Fatigue">Yawn Fatigue</option>
+                <option value="Rem Mendadak">Rem Mendadak</option>
+                <option value="Telephone">Telephone</option>
+                <option value="Mengebut">Mengebut</option>
+                <option value="Periodic Geofench">Periodic Geofench</option>
+            </select>
+
+            <button onclick="resetFilters()" class="text-[10px] font-bold text-blue-600 hover:underline">Reset Filter</button>
+            
+            <button onclick="downloadTemplateExcel()" class="flex items-center gap-2 text-[10px] font-bold bg-amber-500 text-white px-4 py-2 rounded-xl hover:bg-amber-600 transition-all">
+                <i data-lucide="download-cloud" class="w-3 h-3"></i> Template Excel
+            </button>
+
+            <label class="flex items-center gap-2 text-[10px] font-bold bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 transition-all cursor-pointer">
+                <i data-lucide="upload-cloud" class="w-3 h-3"></i> Upload Excel
+                <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="uploadExcel(event)" class="hidden">
+            </label>
+
+            <button onclick="downloadExcel()" class="flex items-center gap-2 text-[10px] font-bold bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-all">
+                <i data-lucide="file-text" class="w-3 h-3"></i> Download Excel
+            </button>
+
+            <div class="ml-auto text-right">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Total Data</p>
+                <p id="totalCounter" class="text-xl font-black text-blue-600">0</p>
+            </div>
+        </div>
+
+        <!-- DATA TABLE -->
+        <div class="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-x-auto">
+            <table class="w-full text-left min-w-[950px]">
+                <thead class="bg-slate-900 text-white">
+                    <tr class="text-[10px] font-black uppercase tracking-widest">
+                        <th class="px-6 py-5">Site | Lambung (Vendor)</th>
+                        <th class="px-6 py-5">Alert Detail</th>
+                        <th class="px-6 py-5 text-center">Kejadian (Tgl | Jam)</th>
+                        <th class="px-6 py-5 text-center">Intervensi (Tgl | Jam)</th>
+                        <th class="px-6 py-5 text-center">Durasi Selisih</th>
+                        <th class="px-6 py-5 text-center">Status</th>
+                        <th class="px-6 py-5 text-center">Eviden Video</th>
+                        <th class="px-6 py-5 text-center">Diinput Oleh</th>
+                        <th class="px-6 py-5 text-right">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="postEventTable" class="divide-y divide-slate-100"></tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- MODAL INPUT DATA -->
+    <div id="inputModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-xl rounded-[2.5rem] p-8 md:p-10 shadow-2xl max-h-[95vh] overflow-y-auto">
+            <h3 class="text-2xl font-black text-slate-800 mb-6">INPUT ALERT DMS PT MIJ</h3>
+            <form id="alertForm" onsubmit="saveEvent(event)" class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">Site</label>
+                    <select id="inSite" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                        <option>BMO 1</option>
+                        <option>BMO 2</option>
+                        <option>SMO</option>
+                        <option>LMO</option>
+                        <option>GMO</option>
+                        <option>HO</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">No. Lambung</label>
+                    <input type="text" id="inNo" required placeholder="MIJ-003 / DT101" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1 uppercase">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">Tipe Alert</label>
+                    <select id="inType" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                        <option>Peringatan Tabrakan</option>
+                        <option>Peringatan Pindah Jalur</option>
+                        <option>Mobil Terlalu Dekat</option>
+                        <option>Object depan</option>
+                        <option>No Seatbelt</option>
+                        <option>Fatigue</option>
+                        <option>Merokok</option>
+                        <option>Tidak Fokus</option>
+                        <option>Camera Tertutup</option>
+                        <option>Silau Matahari</option>
+                        <option>Closed Eyes Fatigue</option>
+                        <option>Yawn Fatigue</option>
+                        <option>Rem Mendadak</option>
+                        <option>Telephone</option>
+                        <option>Mengebut</option>
+                        <option>Periodic Geofench</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">Status</label>
+                    <select id="inStatus" onchange="toggleInterventionInputs()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                        <option value="True">Alert True</option>
+                        <option value="False">Alert False</option>
+                        <option value="Belum Terintervensi">Belum Terintervensi</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">TANGGAL KEJADIAN</label>
+                    <input type="date" id="inDateEvent" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">JAM KEJADIAN</label>
+                    <input type="time" id="inTimeEvent" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                </div>
+                <div id="wrapperDateInt">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">TANGGAL INTERVENSI</label>
+                    <input type="date" id="inDateIntervention" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                </div>
+                <div id="wrapperTimeInt">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">JAM INTERVENSI</label>
+                    <input type="time" id="inTimeIntervention" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                </div>
+                <div class="col-span-2">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">LINK EVIDEN (URL)</label>
+                    <input type="url" id="inEviden" placeholder="https://..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                </div>
+                <div class="col-span-2">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">NAMA PIC / OPERATOR PENGINPUT</label>
+                    <input type="text" id="inPicName" placeholder="Nama Pengawas / RIC" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold mt-1">
+                </div>
+                <div class="col-span-2 flex gap-3 mt-4">
+                    <button type="submit" id="btnSubmitForm" class="flex-1 bg-blue-600 text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700">Simpan ke Cloud</button>
+                    <button type="button" onclick="toggleModal('inputModal', false)" class="flex-1 bg-slate-100 text-slate-500 py-4 rounded-xl font-black text-xs uppercase tracking-widest">Batal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PLAYER EVIDEN VIDEO -->
+    <div id="detailModal" class="fixed inset-0 z-50 hidden bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-4xl rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
+            <button onclick="toggleModal('detailModal', false)" class="absolute top-6 right-6 text-slate-400 hover:text-slate-700 p-2 rounded-full bg-slate-100 z-20">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+
+            <div class="flex items-center gap-3 mb-6">
+                <div class="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+                    <i data-lucide="video" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h3 class="text-xl font-black text-slate-800" id="detailModalTitle">Detail Alert Eviden</h3>
+                    <p class="text-xs font-bold text-slate-400" id="detailModalSubtitle">-</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl mb-6 text-xs">
+                <div><span class="text-[9px] font-bold text-slate-400 block uppercase">Site</span><strong id="mSite" class="text-slate-800">-</strong></div>
+                <div><span class="text-[9px] font-bold text-slate-400 block uppercase">Vendor</span><strong id="mVendor" class="text-slate-800">-</strong></div>
+                <div><span class="text-[9px] font-bold text-slate-400 block uppercase">Kejadian</span><strong id="mTimeEvent" class="text-slate-800">-</strong></div>
+                <div><span class="text-[9px] font-bold text-slate-400 block uppercase">Intervensi</span><strong id="mTimeInt" class="text-slate-800">-</strong></div>
+            </div>
+
+            <div class="w-full bg-black rounded-2xl overflow-hidden aspect-video relative flex items-center justify-center border border-slate-800 p-6" id="videoContainer">
+                <p class="text-slate-400 text-xs italic">Memuat Video Eviden...</p>
+            </div>
+
+            <div class="mt-6 flex justify-between items-center">
+                <div id="vendorHelperText" class="text-[11px] font-bold text-slate-500 flex items-center gap-2"></div>
+                <button onclick="toggleModal('detailModal', false)" class="ml-auto bg-slate-900 text-white px-8 py-3 rounded-xl text-xs font-bold hover:bg-slate-800 shadow-lg">
+                    Tutup Player
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIKA JAVASCRIPT UTAMA & CLOUD STORAGE SYNC -->
+    <script>
+        // =========================================================================
+        // KONFIGURASI CLOUD STORAGE (ISI URL WEB APP GOOGLE APPS SCRIPT DI SINI)
+        // =========================================================================
+        const DEFAULT_GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwSjtuVF7TOa9hUHTny8wcQRBw7zvOqmZr47GwqAgAg2y384lDrRUYpzUPJ9hPbqo4Y/exec"; 
+        const vendorMaster = [
+            {unit: "KT8633GG", vendor: "Cartrack"}, {unit: "KT9031KB", vendor: "Cartrack"},
+            {unit: "KT9063KB", vendor: "Cartrack"}, {unit: "KT9269KU", vendor: "Cartrack"},
+            {unit: "MIJ 003", vendor: "Cartrack"}, {unit: "MIJ 010", vendor: "Cartrack"},
+            {unit: "MIJ 019", vendor: "Cartrack"}, {unit: "MIJ 020", vendor: "Cartrack"},
+            {unit: "MIJ 035", vendor: "Cartrack"}, {unit: "MIJ 044", vendor: "Cartrack"},
+            {unit: "MIJ-049", vendor: "Cartrack"}, {unit: "MIJ-052", vendor: "Cartrack"},
+            {unit: "MIJ-060", vendor: "Cartrack"}, {unit: "MIJ-064", vendor: "Cartrack"},
+            {unit: "MIJ-067", vendor: "Cartrack"}, {unit: "MIJ-071", vendor: "Cartrack"},
+            {unit: "MIJ-072", vendor: "Cartrack"}, {unit: "MIJ-073", vendor: "Cartrack"},
+            {unit: "MIJ-075", vendor: "Cartrack"}, {unit: "MIJ-3101", vendor: "Cartrack"},
+            {unit: "MIJ-3102", vendor: "Cartrack"}, {unit: "MIJ-3104", vendor: "Cartrack"},
+            {unit: "MIJ-331", vendor: "Cartrack"}, {unit: "MIJ-332", vendor: "Cartrack"},
+            {unit: "MIJ-333", vendor: "Cartrack"}, {unit: "MIJ-334", vendor: "Cartrack"},
+            {unit: "MIJ-340", vendor: "Cartrack"}, {unit: "MIJ-346", vendor: "Cartrack"},
+            {unit: "MIJ-373", vendor: "Cartrack"}, {unit: "MIJ-375", vendor: "Cartrack"},
+            {unit: "MIJ-376", vendor: "Cartrack"}, {unit: "MIJ-381", vendor: "Cartrack"},
+            {unit: "MIJ-386", vendor: "Cartrack"}, {unit: "MIJ-387", vendor: "Cartrack"},
+            {unit: "MIJ-390", vendor: "Cartrack"}, {unit: "MIJ-394", vendor: "Cartrack"},
+            {unit: "MIJ-397", vendor: "Cartrack"}, {unit: "MIJ-398", vendor: "Cartrack"},
+            {unit: "MIJ-399", vendor: "Cartrack"}, {unit: "MIJ-5501", vendor: "Cartrack"},
+            {unit: "MIJ-612", vendor: "Cartrack"}, {unit: "MIJ-615", vendor: "Cartrack"},
+            {unit: "MIJ-914", vendor: "Cartrack"}, {unit: "MIJ312", vendor: "Cartrack"},
+            {unit: "MIJ-618", vendor: "Cartrack"},
+            {unit: "MIJ-004", vendor: "Solo System"}, {unit: "MIJ-005", vendor: "Solo System"},
+            {unit: "MIJ-011", vendor: "Solo System"}, {unit: "MIJ-012", vendor: "Solo System"},
+            {unit: "MIJ-014", vendor: "Solo System"}, {unit: "MIJ-015", vendor: "Solo System"},
+            {unit: "MIJ-016", vendor: "Solo System"}, {unit: "MIJ-017", vendor: "Solo System"},
+            {unit: "MIJ-018", vendor: "Solo System"}, {unit: "MIJ-038", vendor: "Solo System"},
+            {unit: "MIJ-043", vendor: "Solo System"}, {unit: "MIJ-051", vendor: "Solo System"},
+            {unit: "MIJ-053", vendor: "Solo System"}, {unit: "MIJ-055", vendor: "Solo System"},
+            {unit: "MIJ-057", vendor: "Solo System"}, {unit: "MIJ-058", vendor: "Solo System"},
+            {unit: "MIJ-065", vendor: "Solo System"}, {unit: "MIJ-066", vendor: "Solo System"},
+            {unit: "MIJ-068", vendor: "Solo System"}, {unit: "MIJ-069", vendor: "Solo System"},
+            {unit: "MIJ-070", vendor: "Solo System"}, {unit: "MIJ-074", vendor: "Solo System"},
+            {unit: "MIJ-3100", vendor: "Solo System"}, {unit: "MIJ-318", vendor: "Solo System"},
+            {unit: "MIJ-338", vendor: "Solo System"}, {unit: "MIJ-341", vendor: "Solo System"},
+            {unit: "MIJ-370", vendor: "Solo System"}, {unit: "MIJ-374", vendor: "Solo System"},
+            {unit: "MIJ-377", vendor: "Solo System"}, {unit: "MIJ-383", vendor: "Solo System"},
+            {unit: "MIJ-384", vendor: "Solo System"}, {unit: "MIJ-385", vendor: "Solo System"},
+            {unit: "MIJ-395", vendor: "Solo System"}, {unit: "MIJ-396", vendor: "Solo System"},
+            {unit: "MIJ-607", vendor: "Solo System"}, {unit: "MIJ-905", vendor: "Solo System"},
+            {unit: "MIJ-907", vendor: "Solo System"}, {unit: "MIJ-909", vendor: "Solo System"},
+            {unit: "MIJ-911", vendor: "Solo System"}, {unit: "MIJ-912", vendor: "Solo System"},
+            {unit: "MIJ 913", vendor: "Solo System"}
+        ];
+
+        function getVendorByUnit(noLambung) {
+            if (!noLambung) return "Unknown";
+            const cleanInput = noLambung.toString().toUpperCase().replace(/[\s-]/g, '');
+            const found = vendorMaster.find(item => {
+                const cleanMasterUnit = item.unit.toUpperCase().replace(/[\s-]/g, '');
+                return cleanInput.includes(cleanMasterUnit) || cleanMasterUnit.includes(cleanInput);
+            });
+            return found ? found.vendor : "Unknown";
+        }
+
+        let postEvents = JSON.parse(localStorage.getItem('dms_post_events_final')) || [];
+        let interventionChart;
+
+        function getGasUrl() {
+            return DEFAULT_GAS_WEBAPP_URL;
+        }
+
+        function getActiveUser() {
+            return localStorage.getItem('dms_pv_user_name') || 'Tim HSE Transport';
+        }
+
+        async function syncFromCloud() {
+            const url = getGasUrl();
+            if (!url) return;
+
+            try {
+                const res = await fetch(url);
+                const json = await res.json();
+                if (json.status === 'ok' && Array.isArray(json.data)) {
+                    postEvents = json.data;
+                    localStorage.setItem('dms_post_events_final', JSON.stringify(postEvents));
+                    renderAll();
+                }
+            } catch (err) {
+                console.error("Cloud Sync Error:", err);
+            }
+        }
+
+        async function pushToCloud(payload) {
+            const url = getGasUrl();
+            if (!url) return false;
+
+            try {
+                await fetch(url, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                await syncFromCloud();
+                return true;
+            } catch (err) {
+                console.error("Cloud Push Error:", err);
+                return false;
+            }
+        }
+
+        const whiteBackgroundPlugin = {
+            id: 'custom_canvas_background_color',
+            beforeDraw: (chart) => {
+                const ctx = chart.canvas.getContext('2d');
+                ctx.save();
+                ctx.globalCompositeOperation = 'destination-over';
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, chart.width, chart.height);
+                ctx.restore();
+            }
+        };
+
+        async function resetAllData() {
+            if (confirm("Apakah Anda yakin ingin MENGHAPUS SEMUA DATA alert secara permanen di perangkat & Cloud? Data yang dihapus tidak bisa dikembalikan!")) {
+                postEvents = [];
+                localStorage.removeItem('dms_post_events_final');
+                renderAll();
+                await pushToCloud({ action: 'reset' });
+                alert("Semua data berhasil direset!");
+            }
+        }
+
+        // PARSER FORMAT TANGGAL ADVANCED
+        function formatDateString(val) {
+            if (!val || val === '-') return "";
+            if (val instanceof Date) {
+                const y = val.getFullYear();
+                const m = String(val.getMonth() + 1).padStart(2, '0');
+                const d = String(val.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+            let s = val.toString().trim();
+            if (s.includes('/')) {
+                const parts = s.split('/');
+                if (parts.length === 3) {
+                    if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+                    return `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+                }
+            }
+            return s;
+        }
+
+        // PARSER FORMAT JAM ADVANCED
+        function formatTimeString(val) {
+            if (!val || val === '-') return "";
+            if (val instanceof Date) {
+                const h = String(val.getHours()).padStart(2, '0');
+                const m = String(val.getMinutes()).padStart(2, '0');
+                return `${h}:${m}`;
+            }
+            let s = val.toString().trim();
+            const numVal = Number(s);
+            if (!isNaN(numVal) && numVal >= 0 && numVal < 1) {
+                const totalSec = Math.round(numVal * 86400);
+                const h = Math.floor(totalSec / 3600);
+                const m = Math.floor((totalSec % 3600) / 60);
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }
+            if (s.includes(':')) {
+                const p = s.split(':');
+                return `${p[0].padStart(2, '0')}:${p[1].padStart(2, '0')}`;
+            }
+            return s;
+        }
+
+        // HITUNG DURASI SELISIH WAKTU
+        function getDiffFull(e) {
+            if (!e || e.status === 'Belum Terintervensi') return null;
+            
+            const dEvt = formatDateString(e.dateEvent || e.date);
+            const dInt = formatDateString(e.dateIntervention || dEvt);
+            const tEvt = formatTimeString(e.timeEvent);
+            const tInt = formatTimeString(e.timeIntervention);
+
+            if (!dEvt || !tEvt || !tInt || !dInt) return null;
+
+            const startStr = `${dEvt}T${tEvt.length === 5 ? tEvt + ':00' : tEvt}`;
+            const endStr = `${dInt}T${tInt.length === 5 ? tInt + ':00' : tInt}`;
+
+            const start = new Date(startStr);
+            const end = new Date(endStr);
+
+            const diffMs = end.getTime() - start.getTime();
+            if (isNaN(diffMs)) return null;
+            
+            const diffMin = Math.round(diffMs / (1000 * 60));
+            return diffMin < 0 ? 0 : diffMin;
+        }
+
+        function isDifferentDay(e) {
+            if (!e || e.status === 'Belum Terintervensi') return false;
+            const dEvt = formatDateString(e.dateEvent || e.date);
+            const dInt = formatDateString(e.dateIntervention);
+            if (!dEvt || !dInt) return false;
+            return dEvt !== dInt;
+        }
+
+        function detectAnomalies(eventItem, allData) {
+            const anomalies = [];
+            if (eventItem.status === 'Belum Terintervensi') {
+                anomalies.push({ type: 'Pending', msg: `Kejadian belum mendapatkan penanganan / intervensi` });
+            } else {
+                const diff = getDiffFull(eventItem);
+                if (diff !== null) {
+                    if (diff > 30) {
+                        anomalies.push({ type: 'Kritis', msg: `Intervensi Sangat Lambat (${diff} Menit > Batas Wajar 15m)` });
+                    } else if (diff > 15) {
+                        anomalies.push({ type: 'Peringatan', msg: `Intervensi Cenderung Lambat (${diff} Menit)` });
+                    }
+                }
+                if (isDifferentDay(eventItem)) {
+                    anomalies.push({ type: 'Beda Hari', msg: `Intervensi dilakukan di hari berbeda (${eventItem.dateEvent} -> ${eventItem.dateIntervention})` });
+                }
+            }
+
+            if (eventItem.timeEvent) {
+                const tFormatted = formatTimeString(eventItem.timeEvent);
+                const hour = parseInt(tFormatted.split(':')[0]);
+                if (!isNaN(hour) && hour >= 0 && hour <= 5) {
+                    anomalies.push({ type: 'Bahaya', msg: `Terjadi di Jam Kritis Micro-Sleep (00:00 - 05:00)` });
+                }
+            }
+
+            const dEvt = formatDateString(eventItem.dateEvent || eventItem.date);
+            const sameUnitEvents = allData.filter(e => e.noLambung === eventItem.noLambung && (formatDateString(e.dateEvent || e.date) === dEvt));
+            if (sameUnitEvents.length >= 3) {
+                anomalies.push({ type: 'Tren Anomali', msg: `Unit ini Mengalami ${sameUnitEvents.length}x Alert di Hari yang Sama!` });
+            }
+
+            return anomalies;
+        }
+
+        function toggleInterventionInputs() {
+            const status = document.getElementById('inStatus').value;
+            const wDate = document.getElementById('wrapperDateInt');
+            const wTime = document.getElementById('wrapperTimeInt');
+            if (status === 'Belum Terintervensi') {
+                wDate.style.display = 'none';
+                wTime.style.display = 'none';
+            } else {
+                wDate.style.display = 'block';
+                wTime.style.display = 'block';
+            }
+        }
+
+        function toggleModal(id, show) {
+            const el = document.getElementById(id);
+            if(el) el.classList.toggle('hidden', !show);
+            if(show && id === 'inputModal') {
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('inDateEvent').value = today;
+                document.getElementById('inDateIntervention').value = today;
+                document.getElementById('inPicName').value = getActiveUser();
+                toggleInterventionInputs();
+            }
+            if(!show && id === 'detailModal') {
+                document.getElementById('videoContainer').innerHTML = '';
+            }
+        }
+
+        function resetFilters() {
+            document.getElementById('filterNoLambung').value = '';
+            document.getElementById('filterStartDate').value = '';
+            document.getElementById('filterEndDate').value = '';
+            document.getElementById('filterVendor').value = 'all';
+            document.getElementById('filterSite').value = 'all';
+            document.getElementById('filterStatus').value = 'all';
+            document.getElementById('filterType').value = 'all';
+            renderAll();
+        }
+
+        async function saveEvent(e) {
+            e.preventDefault();
+            const dateEvent = document.getElementById('inDateEvent').value;
+            const status = document.getElementById('inStatus').value;
+            const picName = document.getElementById('inPicName').value.trim() || getActiveUser();
+            localStorage.setItem('dms_pv_user_name', picName);
+            
+            let dateIntervention = document.getElementById('inDateIntervention').value;
+            let timeIntervention = document.getElementById('inTimeIntervention').value;
+
+            if (status === 'Belum Terintervensi') {
+                dateIntervention = "";
+                timeIntervention = "";
+            }
+
+            const data = {
+                id: Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+                site: document.getElementById('inSite').value,
+                noLambung: document.getElementById('inNo').value.toUpperCase().trim(),
+                type: document.getElementById('inType').value,
+                status: status,
+                timeEvent: formatTimeString(document.getElementById('inTimeEvent').value),
+                dateEvent: formatDateString(dateEvent),
+                timeIntervention: formatTimeString(timeIntervention),
+                dateIntervention: formatDateString(dateIntervention),
+                date: formatDateString(dateEvent),
+                eviden: document.getElementById('inEviden').value.trim(),
+                createdBy: picName
+            };
+
+            postEvents.push(data);
+            localStorage.setItem('dms_post_events_final', JSON.stringify(postEvents));
+            document.getElementById('alertForm').reset();
+            toggleModal('inputModal', false);
+            renderAll();
+
+            await pushToCloud({ action: 'add', item: data });
+        }
+
+        async function deleteEvent(id, event) {
+            if(event) event.stopPropagation(); 
+            if(confirm("Hapus data alert ini dari perangkat dan Cloud?")) {
+                postEvents = postEvents.filter(e => String(e.id) !== String(id));
+                localStorage.setItem('dms_post_events_final', JSON.stringify(postEvents));
+                renderAll();
+                await pushToCloud({ action: 'delete', id: id });
+            }
+        }
+
+        function getFilteredData() {
+            const fNo = document.getElementById('filterNoLambung').value.toLowerCase();
+            const fStart = document.getElementById('filterStartDate').value;
+            const fEnd = document.getElementById('filterEndDate').value;
+            const fVendor = document.getElementById('filterVendor').value;
+            const fSite = document.getElementById('filterSite').value;
+            const fStat = document.getElementById('filterStatus').value;
+            const fType = document.getElementById('filterType').value;
+
+            return postEvents.filter(e => {
+                const matchNo = (e.noLambung || '').toLowerCase().includes(fNo);
+                let matchDate = true;
+                const dEvt = formatDateString(e.dateEvent || e.date);
+                if (fStart && fEnd) { matchDate = dEvt >= fStart && dEvt <= fEnd; }
+                const matchSite = fSite === 'all' || e.site === fSite;
+                const matchStat = fStat === 'all' || e.status === fStat;
+                const matchType = fType === 'all' || e.type === fType;
+                
+                const unitVendor = getVendorByUnit(e.noLambung);
+                const matchVendor = fVendor === 'all' || unitVendor === fVendor;
+
+                return matchNo && matchDate && matchSite && matchStat && matchType && matchVendor;
+            }).sort((a, b) => new Date((formatDateString(a.dateEvent || a.date) || '') + 'T' + (formatTimeString(a.timeEvent) || '00:00')) - new Date((formatDateString(b.dateEvent || b.date) || '') + 'T' + (formatTimeString(b.timeEvent) || '00:00')));
+        }
+
+        function openDetailModal(id) {
+            const item = postEvents.find(x => String(x.id) === String(id));
+            if(!item) return;
+
+            const dEvt = formatDateString(item.dateEvent || item.date) || '-';
+            const dInt = item.status === 'Belum Terintervensi' ? '-' : (formatDateString(item.dateIntervention) || dEvt);
+            const tInt = item.status === 'Belum Terintervensi' ? '-' : (formatTimeString(item.timeIntervention) || '-');
+            const vendorName = getVendorByUnit(item.noLambung);
+
+            document.getElementById('detailModalTitle').innerText = `${item.noLambung} - ${item.type}`;
+            document.getElementById('detailModalSubtitle').innerText = `Kejadian: ${dEvt} ${formatTimeString(item.timeEvent)} | Status: ${item.status} | PIC: ${item.createdBy || '-'}`;
+            document.getElementById('mSite').innerText = item.site;
+            document.getElementById('mVendor').innerText = vendorName;
+            document.getElementById('mTimeEvent').innerText = `${dEvt} ${formatTimeString(item.timeEvent)}`;
+            document.getElementById('mTimeInt').innerText = `${dInt} ${tInt}`;
+
+            const videoContainer = document.getElementById('videoContainer');
+            const helperText = document.getElementById('vendorHelperText');
+            const url = item.eviden ? item.eviden.trim() : '';
+
+            if (url) {
+                if (url.includes('cartrack.com') || vendorName === 'Cartrack') {
+                    helperText.innerHTML = `<span class="text-blue-600 font-extrabold">● Cartrack Eviden Link</span>`;
+                    videoContainer.innerHTML = `
+                        <div class="text-center p-6 flex flex-col items-center justify-center">
+                            <i data-lucide="external-link" class="w-12 h-12 text-blue-500 mb-4 animate-bounce"></i>
+                            <p class="text-slate-300 text-sm mb-4 font-semibold">Video Eviden Cartrack dapat diakses langsung melalui link berikut:</p>
+                            <a href="${url}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-lg text-xs uppercase">
+                                <i data-lucide="external-link" class="w-4 h-4"></i> Buka Video Cartrack (Tab Baru)
+                            </a>
+                        </div>
+                    `;
+                } else {
+                    helperText.innerHTML = `<span class="text-purple-600 font-extrabold">● Direct MP4 Stream</span>`;
+                    videoContainer.innerHTML = `
+                        <video class="w-full h-full rounded-2xl" controls autoplay preload="metadata">
+                            <source src="${url}" type="video/mp4">
+                            Browser tidak mendukung pemutar video.
+                        </video>
+                    `;
+                }
+            } else {
+                helperText.innerHTML = `<span class="text-red-500 font-extrabold">● Eviden Kosong</span>`;
+                videoContainer.innerHTML = `
+                    <div class="text-center p-6">
+                        <i data-lucide="video-off" class="w-10 h-10 text-slate-600 mx-auto mb-2"></i>
+                        <p class="text-slate-400 text-xs italic">Tidak ada URL Video Eviden pada record data ini.</p>
+                    </div>
+                `;
+            }
+
+            toggleModal('detailModal', true);
+            lucide.createIcons();
+        }
+
+        function renderAll() {
+            const filtered = getFilteredData();
+
+            let totalMinutes = 0;
+            let countIntervened = 0;
+
+            let countTrue = 0;
+            let countFalse = 0;
+            let countPending = 0;
+
+            const trendCounts = {};
+            const tbody = document.getElementById('postEventTable');
+            
+            tbody.innerHTML = filtered.map(e => {
+                const dEvt = formatDateString(e.dateEvent || e.date) || '-';
+                const isPending = e.status === 'Belum Terintervensi';
+                const dInt = isPending ? '-' : (formatDateString(e.dateIntervention) || dEvt);
+                const tInt = isPending ? '-' : (formatTimeString(e.timeIntervention) || '-');
+                
+                const diff = getDiffFull(e);
+                if (diff !== null && !isNaN(diff)) {
+                    totalMinutes += diff;
+                    countIntervened++;
+                }
+
+                if (e.status === 'True') countTrue++;
+                else if (e.status === 'False') countFalse++;
+                else countPending++;
+
+                trendCounts[e.type] = (trendCounts[e.type] || 0) + 1;
+                
+                const currentVendor = getVendorByUnit(e.noLambung);
+                let vendorBadgeColor = "bg-slate-100 text-slate-600";
+                if(currentVendor === "Cartrack") vendorBadgeColor = "bg-blue-50 text-blue-600 border border-blue-100";
+                if(currentVendor === "Solo System") vendorBadgeColor = "bg-purple-50 text-purple-600 border border-purple-100";
+
+                const hasEviden = e.eviden && e.eviden.length > 5;
+                const anomalies = detectAnomalies(e, filtered);
+                const hasAnomaly = anomalies.length > 0;
+
+                let anomalyTooltipHtml = '';
+                if (hasAnomaly) {
+                    anomalyTooltipHtml = `
+                        <div class="anomaly-tooltip w-72 bg-slate-900 border border-red-500/50 text-white p-4 rounded-2xl shadow-2xl">
+                            <div class="flex items-center gap-2 mb-2 pb-2 border-b border-slate-800">
+                                <span class="p-1 rounded-lg bg-red-500/20 text-red-400 animate-pulse">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                </span>
+                                <span class="text-xs font-black text-red-400 uppercase tracking-wider">Deteksi Status & Anomali</span>
+                            </div>
+                            <div class="space-y-1.5 text-[10px]">
+                                ${anomalies.map(a => `
+                                    <div class="flex items-start gap-1.5">
+                                        <span class="text-red-400 font-black">•</span>
+                                        <span class="font-bold text-slate-200"><strong class="text-red-300">[${a.type}]</strong> ${a.msg}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                let statusBadge = '';
+                if (e.status === 'True') {
+                    statusBadge = `<span class="px-3 py-1 rounded-full text-[9px] font-black bg-red-100 text-red-700">TRUE</span>`;
+                } else if (e.status === 'False') {
+                    statusBadge = `<span class="px-3 py-1 rounded-full text-[9px] font-black bg-blue-100 text-blue-700">FALSE</span>`;
+                } else {
+                    statusBadge = `<span class="px-3 py-1 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700" title="Belum Terintervensi">-</span>`;
+                }
+
+                let durationDisplay = `<span class="text-xs font-bold text-slate-300">-</span>`;
+                if (diff !== null && !isNaN(diff)) {
+                    const diffColor = diff > 15 ? 'text-red-600' : 'text-blue-600';
+                    durationDisplay = `<span class="text-xs font-black ${diffColor}">${diff}m</span>`;
+                }
+
+                return `
+                    <tr onclick="openDetailModal('${e.id}')" class="has-tooltip hover:bg-blue-50/50 cursor-pointer transition-all relative">
+                        <td class="px-6 py-4">
+                            ${anomalyTooltipHtml}
+                            <div class="flex items-center gap-2">
+                                ${hasAnomaly ? `<span class="w-2 h-2 rounded-full bg-red-500 animate-ping" title="Peringatan Status"></span>` : ''}
+                                <div>
+                                    <div class="text-[9px] font-bold text-slate-400">SITE ${e.site}</div>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        <span class="text-sm font-black text-slate-800">${e.noLambung}</span>
+                                        <span class="px-2 py-0.5 rounded text-[8px] font-bold ${vendorBadgeColor}">${currentVendor}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-xs font-bold text-slate-600">${e.type}</td>
+                        <td class="px-6 py-4 text-center">
+                            <div class="text-xs font-bold text-slate-800">${dEvt}</div>
+                            <div class="text-[10px] font-mono text-slate-500">${formatTimeString(e.timeEvent)}</div>
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <div class="text-xs font-bold text-slate-800">${dInt}</div>
+                            <div class="text-[10px] font-mono text-slate-500">${tInt}</div>
+                        </td>
+                        <td class="px-6 py-4 text-center">${durationDisplay}</td>
+                        <td class="px-6 py-4 text-center">${statusBadge}</td>
+                        <td class="px-6 py-4 text-center">
+                            ${hasEviden 
+                                ? `<span class="inline-flex items-center gap-1 bg-blue-100 text-blue-700 text-[10px] font-extrabold px-3 py-1 rounded-lg"><i data-lucide="play-circle" class="w-3.5 h-3.5"></i> Eviden</span>` 
+                                : `<span class="text-[10px] text-slate-300 italic">Tanpa Eviden</span>`
+                            }
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold">${e.createdBy || '-'}</span>
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <button onclick="deleteEvent('${e.id}', event)" class="text-slate-300 hover:text-red-500 p-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const avg = countIntervened > 0 ? Math.round(totalMinutes / countIntervened) : 0;
+            document.getElementById('avgResponseTime').innerHTML = `${avg} <span class="text-xs font-normal text-slate-400">Menit</span>`;
+            document.getElementById('countTrue').innerText = countTrue;
+            document.getElementById('countFalse').innerText = countFalse;
+            document.getElementById('countPending').innerText = countPending;
+            document.getElementById('totalCounter').innerText = filtered.length;
+
+            const sortedTrend = Object.entries(trendCounts).sort((a,b) => b[1] - a[1]).slice(0, 1);
+            document.getElementById('topAlerts').innerText = sortedTrend.length > 0 ? `${sortedTrend[0][0]} (${sortedTrend[0][1]})` : '-';
+
+            updateChart(filtered);
+            lucide.createIcons();
+        }
+
+        function updateChart(data) {
+            const ctx = document.getElementById('interventionChart').getContext('2d');
+            
+            const labels = data.map(d => `${(formatDateString(d.dateEvent || d.date) || '').substring(5)} | ${d.noLambung}`);
+            
+            const valEvent = data.map(d => { 
+                const t = formatTimeString(d.timeEvent);
+                if(!t) return null;
+                const [h, m] = t.split(':').map(Number); 
+                return h + (m/60); 
+            });
+
+            const valInt = data.map(d => { 
+                const t = formatTimeString(d.timeIntervention);
+                if(d.status === 'Belum Terintervensi' || !t) return null;
+                const [h, m] = t.split(':').map(Number); 
+                return h + (m/60); 
+            });
+
+            const pointColors = data.map(d => {
+                if (d.status === 'Belum Terintervensi') return '#10b981';
+                if (isDifferentDay(d)) return '#f59e0b';
+                if (d.status === 'True') return '#ef4444';
+                return '#2563eb';
+            });
+
+            if(interventionChart) interventionChart.destroy();
+            
+            interventionChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { 
+                            label: 'Jam Kejadian', 
+                            data: valEvent, 
+                            borderColor: '#94a3b8', 
+                            borderDash: [5, 5], 
+                            tension: 0.1,
+                            pointRadius: 3
+                        },
+                        { 
+                            label: 'Jam Intervensi', 
+                            data: valInt, 
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.05)', 
+                            fill: false, 
+                            tension: 0.1,
+                            pointRadius: 6,
+                            pointHoverRadius: 8,
+                            pointBackgroundColor: pointColors,
+                            pointBorderColor: pointColors
+                        }
+                    ]
+                },
+                plugins: [whiteBackgroundPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    devicePixelRatio: 2,
+                    scales: { 
+                        y: { 
+                            ticks: { 
+                                callback: (v) => Math.floor(v).toString().padStart(2,'0') + ':00'
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 24
+                        },
+                        x: {
+                            ticks: { font: { size: 9, weight: 'bold' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function downloadChart() {
+            const canvas = document.getElementById('interventionChart');
+            const image = canvas.toDataURL("image/jpeg", 1.0);
+            const link = document.createElement('a');
+            link.download = `Analisa-DMS-HD-${new Date().toLocaleDateString()}.jpg`;
+            link.href = image;
+            link.click();
+        }
+
+        function downloadExcel() {
+            const filteredData = getFilteredData();
+            if (filteredData.length === 0) {
+                alert("Tidak ada data untuk diunduh.");
+                return;
+            }
+            const excelRows = filteredData.map(item => {
+                const isPending = item.status === 'Belum Terintervensi';
+                return {
+                    "Site": item.site,
+                    "No. Lambung": item.noLambung,
+                    "Tipe Alert": item.type,
+                    "Status": isPending ? "Belum Terintervensi" : item.status.toUpperCase(),
+                    "Tanggal Kejadian": formatDateString(item.dateEvent || item.date),
+                    "Jam Kejadian": formatTimeString(item.timeEvent),
+                    "Tanggal Intervensi": isPending ? "-" : (formatDateString(item.dateIntervention) || formatDateString(item.dateEvent || item.date)),
+                    "Jam Intervensi": isPending ? "-" : formatTimeString(item.timeIntervention),
+                    "Link Eviden": item.eviden || "",
+                    "Diinput Oleh": item.createdBy || "-"
+                };
+            });
+            const worksheet = XLSX.utils.json_to_sheet(excelRows);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Post-Event DMS");
+            worksheet["!cols"] = [
+                { wch: 10 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, 
+                { wch: 18 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 35 }, { wch: 20 }
+            ];
+            const currentDate = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(workbook, `Data_Monitoring_DMS_${currentDate}.xlsx`);
+        }
+
+        function downloadTemplateExcel() {
+            const today = new Date().toISOString().split('T')[0];
+            const sampleData = [
+                {
+                    "Site": "BMO 1",
+                    "No. Lambung": "DT101",
+                    "Tipe Alert": "Fatigue",
+                    "Status": "True",
+                    "Tanggal Kejadian": today,
+                    "Jam Kejadian": "08:30",
+                    "Tanggal Intervensi": today,
+                    "Jam Intervensi": "08:35",
+                    "Link Eviden": "https://solofleetstorage.blob.core.windows.net/safetyevents/sample.mp4"
+                },
+                {
+                    "Site": "BMO 2",
+                    "No. Lambung": "MIJ 003",
+                    "Tipe Alert": "Merokok",
+                    "Status": "False",
+                    "Tanggal Kejadian": today,
+                    "Jam Kejadian": "10:15",
+                    "Tanggal Intervensi": today,
+                    "Jam Intervensi": "10:20",
+                    "Link Eviden": "https://fleetweb-id.cartrack.com/jsonrpc/videofootage?requestId=132759"
+                },
+                {
+                    "Site": "SMO",
+                    "No. Lambung": "MIJ-055",
+                    "Tipe Alert": "Tidak Fokus",
+                    "Status": "Belum Terintervensi",
+                    "Tanggal Kejadian": today,
+                    "Jam Kejadian": "11:00",
+                    "Tanggal Intervensi": "-",
+                    "Jam Intervensi": "-",
+                    "Link Eviden": ""
+                }
+            ];
+
+            const worksheet = XLSX.utils.json_to_sheet(sampleData);
+            worksheet["!cols"] = [
+                { wch: 10 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, 
+                { wch: 18 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 45 }
+            ];
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Template Input DMS");
+            XLSX.writeFile(workbook, "Template_Import_Alert_DMS.xlsx");
+        }
+
+        // FUNGSI UPLOAD EXCEL SUPER ROBUST & FLEXIBLE + SYNC CLOUD
+        function uploadExcel(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true, raw: false });
+                    const firstSheet = workbook.SheetNames[0];
+                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: "" });
+
+                    if (rows.length === 0) {
+                        alert("File Excel kosong atau tidak terbaca!");
+                        return;
+                    }
+
+                    const newItems = [];
+                    const picName = getActiveUser();
+
+                    rows.forEach((row, idx) => {
+                        const getVal = (keys) => {
+                            const foundKey = Object.keys(row).find(k => 
+                                keys.some(key => k.trim().toLowerCase().replace(/[\s\.]/g, '') === key.toLowerCase().replace(/[\s\.]/g, ''))
+                            );
+                            return foundKey ? row[foundKey] : "";
+                        };
+
+                        const site = getVal(['Site', 'Lokasi']);
+                        const noLambung = getVal(['No. Lambung', 'No Lambung', 'Lambung', 'Unit', 'No Unit']);
+                        const type = getVal(['Tipe Alert', 'Tipe', 'Jenis Alert', 'Alert']);
+                        const statusRaw = getVal(['Status', 'Status Alert']);
+                        
+                        let dateEvent = getVal(['Tanggal Kejadian', 'Tgl Kejadian', 'Tanggal', 'Date']);
+                        let timeEvent = getVal(['Jam Kejadian', 'Jam Event', 'Waktu Kejadian', 'Time']);
+                        
+                        let dateIntervention = getVal(['Tanggal Intervensi', 'Tgl Intervensi']);
+                        let timeIntervention = getVal(['Jam Intervensi', 'Jam Int']);
+                        const eviden = getVal(['Link Eviden', 'Eviden', 'Link Video', 'URL']);
+
+                        if (site && noLambung && type && dateEvent && timeEvent) {
+                            let status = "True";
+                            const s = statusRaw.toString().trim().toLowerCase();
+                            
+                            if (s.includes('false')) {
+                                status = "False";
+                            } else if (s.includes('belum') || s === '-' || s === 'pending' || s === '') {
+                                status = "Belum Terintervensi";
+                            }
+
+                            if (status === 'Belum Terintervensi' || dateIntervention === '-' || timeIntervention === '-') {
+                                dateIntervention = "";
+                                timeIntervention = "";
+                            }
+
+                            const itemObj = {
+                                id: (Date.now() + idx) + '-' + Math.random().toString(36).substring(2, 6),
+                                site: site.toString().trim(),
+                                noLambung: noLambung.toString().trim().toUpperCase(),
+                                type: type.toString().trim(),
+                                status: status,
+                                dateEvent: formatDateString(dateEvent),
+                                timeEvent: formatTimeString(timeEvent),
+                                dateIntervention: formatDateString(dateIntervention),
+                                timeIntervention: formatTimeString(timeIntervention),
+                                date: formatDateString(dateEvent),
+                                eviden: eviden ? eviden.toString().trim() : "",
+                                createdBy: picName
+                            };
+                            postEvents.push(itemObj);
+                            newItems.push(itemObj);
+                        }
+                    });
+
+                    if (newItems.length > 0) {
+                        localStorage.setItem('dms_post_events_final', JSON.stringify(postEvents));
+                        renderAll();
+                        await pushToCloud({ action: 'bulkAdd', items: newItems });
+                        alert(`Berhasil mengimpor ${newItems.length} data dari Excel & menyinkronkan ke Cloud!`);
+                    } else {
+                        alert("Gagal memproses data! Pastikan kolom utama (Site, No. Lambung, Tipe Alert, Tanggal Kejadian, Jam Kejadian) terisi.");
+                    }
+                } catch (err) {
+                    alert("Gagal membaca file Excel. Pastikan format file adalah .xlsx atau .xls");
+                    console.error(err);
+                }
+                document.getElementById('excelFileInput').value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'dms_post_events_final') {
+                postEvents = JSON.parse(e.newValue || '[]');
+                renderAll();
+            }
+        });
+
+        window.addEventListener('focus', () => {
+            syncFromCloud();
+        });
+
+        window.onload = () => {
+            renderAll();
+            syncFromCloud();
+        };
+    </script>
+</body>
+</html>
