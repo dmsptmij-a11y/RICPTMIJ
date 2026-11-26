@@ -43,17 +43,22 @@
         
         <!-- HEADER -->
         <header class="flex flex-wrap justify-between items-end gap-4 mb-8">
-            <div class="flex items-center gap-4">
-                <img src="MIJ.PNG" alt="Logo PT Majau Inti Jaya" class="h-14 w-auto object-contain rounded-xl bg-white p-1.5 shadow-sm border border-slate-100">
-                <div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="text-xs font-black tracking-widest uppercase text-blue-600">HSE Transport • PT Majau Inti Jaya</span>
+            <div>
+                <div class="flex items-center gap-3 mb-2">
+                    <div id="mijLogoBox" class="h-10 min-w-[40px] px-1.5 rounded-lg bg-white p-1 shadow-sm border border-slate-100 flex items-center justify-center">
+                        <img id="mijLogoImg" src="MIJ.PNG" alt="Logo PT Majau Inti Jaya" class="h-full w-auto object-contain" onerror="this.style.display='none'; document.getElementById('mijLogoFallback').style.display='flex';">
+                        <span id="mijLogoFallback" style="display:none;" class="text-[10px] font-black tracking-tight text-blue-700 px-1">MIJ</span>
                     </div>
-                    <h2 class="text-3xl font-black text-slate-800 tracking-tight">DMS PT MAJAU INTI JAYA</h2>
+                    <span class="text-xs font-black tracking-widest uppercase text-blue-600">HSE Transport • PT Majau Inti Jaya</span>
                 </div>
+                <h2 class="text-3xl font-black text-slate-800 tracking-tight">DMS PT MAJAU INTI JAYA</h2>
+                <p class="text-slate-500 font-medium italic">Evaluasi dan validasi data alert DMS — Multi-User Cloud Storage</p>
             </div>
             
             <div class="flex flex-wrap items-center gap-3">
+                <button onclick="refreshStaticData()" id="btnRefreshData" class="bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Refresh
+                </button>
                 <button onclick="resetAllData()" class="bg-red-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-red-600 shadow-lg shadow-red-200 transition-all">
                     <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset All Data
                 </button>
@@ -403,9 +408,12 @@
             return localStorage.getItem('dms_pv_user_name') || 'Tim HSE Transport';
         }
 
-        async function syncFromCloud() {
+        async function syncFromCloud(showFeedback = false) {
             const url = getGasUrl();
-            if (!url) return;
+            if (!url) {
+                if (showFeedback) renderAll();
+                return;
+            }
 
             try {
                 const res = await fetch(url);
@@ -414,10 +422,19 @@
                     postEvents = json.data;
                     localStorage.setItem('dms_post_events_final', JSON.stringify(postEvents));
                     renderAll();
+                    if (showFeedback) alert(`Data berhasil di-refresh (${postEvents.length} record).`);
                 }
             } catch (err) {
                 console.error("Cloud Sync Error:", err);
+                renderAll();
+                if (showFeedback) alert("Gagal mengambil data terbaru dari Cloud; menampilkan data statis tersimpan.");
             }
+        }
+
+        async function refreshStaticData() {
+            postEvents = JSON.parse(localStorage.getItem('dms_post_events_final')) || [];
+            renderAll();
+            await syncFromCloud(true);
         }
 
         async function pushToCloud(payload) {
@@ -681,7 +698,7 @@
                 const matchVendor = fVendor === 'all' || unitVendor === fVendor;
 
                 return matchNo && matchDate && matchSite && matchStat && matchType && matchVendor;
-            }).sort((a, b) => new Date((formatDateString(a.dateEvent || a.date) || '') + 'T' + (formatTimeString(a.timeEvent) || '00:00')) - new Date((formatDateString(b.dateEvent || b.date) || '') + 'T' + (formatTimeString(b.timeEvent) || '00:00')));
+            });
         }
 
         function openDetailModal(id) {
@@ -1130,20 +1147,9 @@
             reader.readAsArrayBuffer(file);
         }
 
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'dms_post_events_final') {
-                postEvents = JSON.parse(e.newValue || '[]');
-                renderAll();
-            }
-        });
-
-        window.addEventListener('focus', () => {
-            syncFromCloud();
-        });
-
         window.onload = () => {
+            postEvents = JSON.parse(localStorage.getItem('dms_post_events_final')) || [];
             renderAll();
-            syncFromCloud();
         };
     </script>
 </body>
